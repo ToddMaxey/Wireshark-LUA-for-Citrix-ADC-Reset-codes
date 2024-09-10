@@ -3,17 +3,16 @@
 -- WireShark LUA script for decoding Citrix ADC (NetScaler) Reset Codes
 -- Based on https://support.citrix.com/article/CTX200852/citrix-adc-netscaler-reset-codes-reference
 
--- Reset code to description table
--- Define a new protocol
-local tcp_windows_proto = Proto("tcp_windows", "TCP Windows Error Code")
+-- Define a new protocol with unique abbreviation and description
+local citrix_tcp_proto = Proto("citrix_tcp_rst", "Citrix NetScaler TCP Reset Code")
 
--- Define the fields
-tcp_windows_proto.fields.window = ProtoField.uint16("tcp_windows.window", "Window Size", base.DEC)
+-- Define the fields for the protocol
+citrix_tcp_proto.fields.window = ProtoField.uint16("citrix_tcp_rst.window", "Window Size", base.DEC)
 
 -- Define field extractors
 local f_tcp_srcport = Field.new("tcp.srcport")
 local f_tcp_dstport = Field.new("tcp.dstport")
-local f_tcp_window_size = Field.new("tcp.window_size")
+local f_tcp_window_size = Field.new("tcp.window_size_value")  -- Ensure correct field is used
 local f_tcp_flags_reset = Field.new("tcp.flags.reset")
 
 -- Define the lookup table
@@ -268,30 +267,32 @@ local window_size_lookup = {
 }
 
 -- Dissection function
-function tcp_windows_proto.dissector(buffer, pinfo, tree)
+function citrix_tcp_proto.dissector(buffer, pinfo, tree)
     -- Ensure the packet is TCP
-    local tcp_srcport = tonumber(tostring(f_tcp_srcport()))
-    local tcp_dstport = tonumber(tostring(f_tcp_dstport()))
+    local tcp_srcport = f_tcp_srcport().value
+    local tcp_dstport = f_tcp_dstport().value
     
     if tcp_srcport == nil or tcp_dstport == nil then return end
     
     -- Check if the TCP reset flag is set
-    local tcp_reset_flag = tonumber(tostring(f_tcp_flags_reset()))
+    local tcp_reset_flag = f_tcp_flags_reset().value
     
     if tcp_reset_flag == 1 then  -- 1 indicates the reset flag is set
         -- Extract TCP Window Size
-        local window_size = tonumber(tostring(f_tcp_window_size()))
+        local window_size = f_tcp_window_size().value
         
         -- Look up the description based on window size
         local window_description = window_size_lookup[window_size]
         
         -- Only add the subtree if a description was found
         if window_description then
-            local subtree = tree:add(tcp_windows_proto, buffer(), "TCP Windows Error Code")
-            subtree:add(tcp_windows_proto.fields.window, window_size):append_text(window_description)
+            local subtree = tree:add(citrix_tcp_proto, buffer(), "Citrix NetScaler TCP Reset Code")
+            subtree:add(citrix_tcp_proto.fields.window, window_size):append_text(" - " .. window_description)
+        else
+            print("Unrecognized window size: " .. window_size)
         end
     end
 end
 
 -- Register the post-dissector
-register_postdissector(tcp_windows_proto)
+register_postdissector(citrix_tcp_proto)
