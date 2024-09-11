@@ -269,30 +269,39 @@ local window_size_lookup = {
 -- Dissection function
 function citrix_tcp_proto.dissector(buffer, pinfo, tree)
     -- Ensure the packet is TCP
-    local tcp_srcport = f_tcp_srcport().value
-    local tcp_dstport = f_tcp_dstport().value
+    local tcp_srcport = f_tcp_srcport()
+    local tcp_dstport = f_tcp_dstport()
     
-    if tcp_srcport == nil or tcp_dstport == nil then return end
+    if tcp_srcport == nil or tcp_dstport == nil or tcp_srcport.value == nil or tcp_dstport.value == nil then 
+        return 
+    end
     
     -- Check if the TCP reset flag is set
-    local tcp_reset_flag = f_tcp_flags_reset().value
+    local tcp_reset_flag = f_tcp_flags_reset()
+    if tcp_reset_flag == nil or tcp_reset_flag.value == nil or tcp_reset_flag.value ~= 1 then 
+        return 
+    end
     
-    if tcp_reset_flag == 1 then  -- 1 indicates the reset flag is set
-        -- Extract TCP Window Size
-        local window_size = f_tcp_window_size().value
-        
-        -- Look up the description based on window size
-        local window_description = window_size_lookup[window_size]
-        
-        -- Only add the subtree if a description was found
-        if window_description then
-            local subtree = tree:add(citrix_tcp_proto, buffer(), "Citrix NetScaler TCP Reset Code")
-            subtree:add(citrix_tcp_proto.fields.window, window_size):append_text(" - " .. window_description)
-        else
-            print("Unrecognized window size: " .. window_size)
-        end
+    -- Extract TCP Window Size
+    local window_size = f_tcp_window_size()
+    if window_size == nil or window_size.value == nil then 
+        return 
+    end
+    
+    -- Look up the description based on window size
+    local window_description = window_size_lookup[window_size.value]
+    
+    -- Only add the subtree if a description was found
+    if window_description then
+        local subtree = tree:add(citrix_tcp_proto, buffer(0, 20), "Citrix NetScaler TCP Reset Code") -- limit buffer size for efficiency
+        subtree:add(citrix_tcp_proto.fields.window, window_size.value):append_text(" - " .. window_description)
+        pinfo.cols.info = "Citrix RST Code: " .. window_description  -- Add info to Wireshark columns
+    else
+        pinfo.cols.info = "Unrecognized window size: " .. window_size.value
     end
 end
 
 -- Register the post-dissector
-register_postdissector(citrix_tcp_proto)
+if not DissectorTable.get("tcp.port"):get_dissector(citrix_tcp_proto.name) then
+    register_postdissector(citrix_tcp_proto)
+end
