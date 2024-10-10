@@ -293,15 +293,13 @@ function citrix_tcp_proto.dissector(buffer, pinfo, tree)
     
     -- Only add the subtree if a description was found
     if window_description then
-        local subtree = tree:add(citrix_tcp_proto, buffer(0, 20), "Citrix NetScaler TCP Reset Code") -- limit buffer size for efficiency
+        local subtree = tree:add(citrix_tcp_proto, buffer(0, 20), "Citrix NetScaler TCP Reset Code")
         subtree:add(citrix_tcp_proto.fields.window, window_size.value):append_text(" - " .. window_description)
-        pinfo.cols.info = "Citrix RST Code: " .. window_description  -- Add info to Wireshark columns
+        pinfo.cols.info = "Citrix RST Code: " .. window_description
     else
         pinfo.cols.info = "Unrecognized window size: " .. window_size.value
     end
 end
 
--- Register the post-dissector
-if not DissectorTable.get("tcp.port"):get_dissector(citrix_tcp_proto.name) then
-    register_postdissector(citrix_tcp_proto)
-end
+-- Register the post-dissector, ensuring uniqueness in registration
+register_postdissector(citrix_tcp_proto)
